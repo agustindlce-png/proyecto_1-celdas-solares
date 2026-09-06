@@ -9,6 +9,23 @@ dispositivo completo (no se usa solcore, según prohibición del enunciado).
 Todas las funciones reciben y devuelven cantidades ya explícitas en unidades
 físicas (V, mA/cm^2, K, etc.) y ninguna constante numérica está "suelta": se
 importan desde constantes.py.
+
+CAMBIO respecto de la versión original
+---------------------------------------
+`ni_T_cm3` ahora acepta un parámetro opcional `Eg_eV`. Antes, la función
+siempre usaba Eg_T_eV(T_K) (el Eg REAL del silicio a esa temperatura), sin
+importar qué banda prohibida estuviera explorando el usuario en el slider
+de la Pestaña 1. Esto hacía que, al mover Eg en la cascada de pérdidas
+(Pestaña 2), el V_OC casi no se moviera -- cuando físicamente V_OC depende
+fuertemente de Eg a través de ni ~ exp(-Eg / 2kT) (V_OC ~ ln(1/ni^3)).
+
+Con Eg_eV=None (comportamiento por defecto, usado en la Pestaña 3 y en toda
+la pestaña de Validación) el resultado es IDÉNTICO al de antes: se usa el
+Eg(T) real del silicio. Sólo cuando se pasa explícitamente Eg_eV=<valor del
+slider> (como se hace en calcular_cascada(), en app.py) se calcula el ni de
+un material hipotético con ese Eg a esa temperatura. Esto no cambia ningún
+valor de referencia de V1-V6 (todas siguen llamando ni_T_cm3 sin el
+parámetro nuevo).
 """
 
 import numpy as np
@@ -28,7 +45,7 @@ def Eg_T_eV(T_K):
     return EG_T_A - EG_T_B * T_K
 
 
-def ni_T_cm3(T_K, ni_300K=NI_300K_REF):
+def ni_T_cm3(T_K, ni_300K=NI_300K_REF, Eg_eV=None):
     """
     Concentración intrínseca n_i(T), calibrada para reproducir exactamente
     n_i(300K) = ni_300K (valor de referencia del curso, Anexo B) y con la
@@ -36,14 +53,36 @@ def ni_T_cm3(T_K, ni_300K=NI_300K_REF):
     de n_i^2 = Nc*Nv*exp(-Eg/kT) con Nc,Nv ~ T^{3/2} (aproximación de
     Boltzmann, Unidad 2).
 
+    Parámetros
+    ----------
+    T_K : float o array
+        Temperatura en kelvin.
+    ni_300K : float
+        Valor de referencia de n_i a 300 K (Anexo B del enunciado).
+    Eg_eV : float, array o None
+        Banda prohibida a usar en el cálculo de n_i(T).
+        - Si es None (por defecto): se usa el Eg(T) REAL del silicio,
+          vía Eg_T_eV(T_K). Éste es el comportamiento histórico de la
+          función, usado en la Pestaña 3 (barrido térmico del silicio real)
+          y en TODAS las verificaciones de la pestaña de Validación -- por
+          lo tanto no cambia ningún valor de referencia (V1-V6).
+        - Si se especifica (p.ej. el Eg del slider de la Pestaña 1,
+          compartido vía st.session_state con la cascada de la Pestaña 2):
+          se usa ese Eg como banda prohibida de un material HIPOTÉTICO a
+          la temperatura T_K, en vez del Eg real del silicio. Esto es lo
+          que permite que, al explorar Eg en la cascada de pérdidas, el
+          V_OC resultante refleje correctamente la física de que
+          V_OC ~ ln(1/ni^3) y ni ~ exp(-Eg/2kT): subir Eg debe hundir ni
+          exponencialmente y elevar fuertemente el V_OC límite.
+
     Aproximación explícita: se fija la amplitud con el valor de referencia a
-    300 K y sólo se propaga la forma funcional del escalamiento con T; esto
-    evita tener que fijar a mano las masas efectivas con precisión de %, que
-    no cambian la física cualitativa pedida en este problema (ver discusión
-    en la pestaña de Validación).
+    300 K y sólo se propaga la forma funcional del escalamiento con T (y,
+    opcionalmente, con Eg); esto evita tener que fijar a mano las masas
+    efectivas con precisión de %, que no cambian la física cualitativa
+    pedida en este problema (ver discusión en la pestaña de Validación).
     """
     T_K = np.asarray(T_K, dtype=float)
-    Eg = Eg_T_eV(T_K)
+    Eg = Eg_T_eV(T_K) if Eg_eV is None else np.asarray(Eg_eV, dtype=float)
     Eg_300 = Eg_T_eV(300.0)
     factor_T = (T_K / 300.0) ** 1.5
     factor_exp = np.exp(-(Eg / (2 * KB_EV * T_K)) + (Eg_300 / (2 * KB_EV * 300.0)))
