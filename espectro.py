@@ -40,11 +40,38 @@ def _trapz(y, x):
     return np.trapz(y, x)
 
 
+def _cargar_dataframe_espectro():
+    """
+    Carga el CSV del espectro AM1.5G. Si el archivo local data/ASTMG173.csv
+    no está disponible (p. ej. no se subió correctamente al repositorio de
+    despliegue), se descarga automáticamente desde la misma fuente pública
+    (NREL/ASTM G173-03) y se guarda localmente para las próximas ejecuciones.
+    """
+    url_publica = (
+        "https://raw.githubusercontent.com/marcus-cmc/"
+        "Shockley-Queisser-limit/master/ASTMG173.csv"
+    )
+    if os.path.exists(_DATA_PATH):
+        try:
+            return pd.read_csv(_DATA_PATH, skiprows=1)
+        except Exception:
+            pass  # archivo corrupto o vacío -> se intenta descargar abajo
+
+    # Fallback: descargar desde la fuente pública y guardar copia local.
+    df = pd.read_csv(url_publica, skiprows=1)
+    try:
+        os.makedirs(os.path.dirname(_DATA_PATH), exist_ok=True)
+        df.to_csv(_DATA_PATH, index=False)
+    except Exception:
+        pass  # si no se puede escribir (permisos de sólo lectura), no es crítico
+    return df
+
+
 class EspectroAM15G:
     """Encapsula el espectro AM1.5G y las magnitudes derivadas de él."""
 
     def __init__(self):
-        df = pd.read_csv(_DATA_PATH, skiprows=1)
+        df = _cargar_dataframe_espectro()
         df.columns = [c.strip() for c in df.columns]
         self.wl_nm = df["Wvlgth nm"].to_numpy(dtype=float)
         self.P_Wm2nm = df["Global tilt  W*m-2*nm-1"].to_numpy(dtype=float)
